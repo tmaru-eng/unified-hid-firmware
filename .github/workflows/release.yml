@@ -1,0 +1,62 @@
+name: Release firmware
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  firmware:
+    name: Build and publish UF2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+          components: llvm-tools-preview
+      - name: Build the physically validated bridge binary
+        run: >-
+          cargo build --release --target thumbv7em-none-eabihf --locked
+          -p ukf-nrf52840-ble-usb --features xiao-ble-hardware
+          --bin ukf-xiao-ble-probe
+      - name: Pack and validate UF2
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_directory='target/thumbv7em-none-eabihf/release'
+          elf_path="${release_directory}/ukf-xiao-ble-probe"
+          raw_path="${release_directory}/ukf-xiao-ble-probe.bin"
+          uf2_path="${release_directory}/ukf-xiao-ble-probe.uf2"
+          objcopy_path="$(find "$(rustc --print sysroot)" -type f -name llvm-objcopy -print -quit)"
+          if [[ -z "${objcopy_path}" ]]; then
+            echo '::error::llvm-objcopy was not installed by llvm-tools-preview.'
+            exit 1
+          fi
+          "${objcopy_path}" -O binary "${elf_path}" "${raw_path}"
+          python firmware/nrf52840-ble-usb/tools/xiao_uf2.py pack "${raw_path}" "${uf2_path}"
+          python firmware/nrf52840-ble-usb/tools/xiao_uf2.py check "${uf2_path}"
+          sha256sum "${uf2_path}" > "${uf2_path}.sha256"
+          cat "${uf2_path}.sha256"
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          ## ${GITHUB_REF_NAME}
+
+          - XIAO nRF52840 Sense向けの検証済みBLE bridge UF2です。
+          - 書き込み前にBoard-ID、S140、UF2範囲、CURRENT.UF2バックアップ、BLE切断を確認してください。
+          - 詳細は [Getting started](https://github.com/tmaru-eng/unified-hid-firmware/blob/main/docs/GETTING-STARTED.md) を参照してください。
+          EOF
+          gh release create "${GITHUB_REF_NAME}" \
+            target/thumbv7em-none-eabihf/release/ukf-xiao-ble-probe.uf2 \
+            target/thumbv7em-none-eabihf/release/ukf-xiao-ble-probe.uf2.sha256 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "Firmware ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md
