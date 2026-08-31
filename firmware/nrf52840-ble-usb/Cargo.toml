@@ -144,7 +144,7 @@ nrf-sdc = { git = "https://github.com/alexmoon/nrf-sdc", rev = "f54b6389ffa2750d
 # `legacy-pairing` is not implied by `security`: without it the host does
 # Secure Connections only. Some BLE 4.x-era keyboards require LE Legacy
 # passkey entry, so this feature remains explicit for interoperability.
-trouble-host = { version = "0.7.0", optional = true, features = ["scan", "security", "legacy-pairing"] }
+trouble-host = { version = "0.8.0", optional = true, features = ["scan", "security", "legacy-pairing"] }
 # Named directly because `Scanner::scan` and `Central::connect` carry `where`
 # clauses over `bt_hci`'s command traits, and a generic radio task has to repeat
 # them. Must stay on the version `trouble-host` resolves to.
